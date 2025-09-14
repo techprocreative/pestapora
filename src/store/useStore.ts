@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Event, User, CartItem, Order, Seat } from '../types';
 import { mockEvents } from '../data/mockEvents';
+import { supabase } from '../lib/supabase';
+
 
 interface PaymentData {
   cardNumber?: string;
@@ -37,10 +39,8 @@ interface AppState {
   setSelectedEvent: (event: Event | null) => void;
   filterEvents: (query: string, category: string) => void;
   
-  // Auth actions
-  login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  register: (email: string, password: string, name: string) => Promise<boolean>;
+  // Auth actions (now handled by AuthContext)
+  // login, logout, register moved to AuthContext
   
   // Cart actions
   addToCart: (item: CartItem) => void;
@@ -58,15 +58,7 @@ interface AppState {
   processPayment: (paymentData: PaymentData) => Promise<Order>;
 }
 
-const mockUsers: User[] = [
-  {
-    id: '1',
-    email: 'admin@pestapora.com',
-    name: 'ADMIN PESTAPORA',
-    isOrganizer: true,
-    orders: []
-  }
-];
+// Mock users removed - now using Supabase Auth
 
 export const useStore = create<AppState>()(
   persist(
@@ -107,30 +99,8 @@ export const useStore = create<AppState>()(
         set({ filteredEvents: filtered, searchQuery: query, selectedCategory: category });
       },
 
-      // Auth actions
-      login: async (email, password) => {
-        const user = mockUsers.find(u => u.email === email);
-        if (user && password === 'pestapora123') {
-          set({ user, isAuthenticated: true });
-          return true;
-        }
-        return false;
-      },
-
-      logout: () => set({ user: null, isAuthenticated: false }),
-
-      register: async (email, _password, name) => {
-        const newUser: User = {
-          id: Date.now().toString(),
-          email,
-          name: name.toUpperCase(),
-          isOrganizer: false,
-          orders: []
-        };
-        mockUsers.push(newUser);
-        set({ user: newUser, isAuthenticated: true });
-        return true;
-      },
+      // Auth actions moved to AuthContext
+      // User state will be synced from AuthContext
 
       // Cart actions
       addToCart: (item) => {
@@ -199,24 +169,81 @@ export const useStore = create<AppState>()(
       // Checkout
       processPayment: async (paymentData) => {
         const { cart, user } = get();
-        if (!user) throw new Error('User not authenticated');
-
-        const order: Order = {
-          id: Date.now().toString(),
-          userId: user.id,
-          eventId: cart[0]?.eventId || '',
-          tickets: cart,
-          total: cart.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-          status: 'confirmed',
-          paymentMethod: paymentData.method || 'Unknown',
-          createdAt: new Date(),
-          qrCode: `QR-${Date.now()}`
-        };
-
-        // Clear cart after successful payment
-        set({ cart: [] });
         
-        return order;
+        if (!user || cart.length === 0) {
+          throw new Error('Invalid payment data');
+        }
+
+        try {
+          // Create order in Supabase
+          const totalCents = cart.reduce((sum, item) => sum + (item.price * item.quantity * 100), 0);
+          
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .insert({
+              user_id: user.id,
+              event_id: cart[0]?.eventId, // Assuming single event per order for now
+              total_cents: totalCents,
+              status: 'paid',
+              payment_method: paymentData.method || 'card'
+            })
+            .select()
+            .single();
+
+          if (orderError) throw orderError;
+
+          // Create order items
+          const orderItems = cart.map(item => ({
+            order_id: orderData.id,
+            ticket_type_id: item.ticketTypeId,
+            quantity: item.quantity,
+            unit_price_cents: item.price * 100
+          }));
+
+          const { error: itemsError } = await supabase
+            .from('order_items')
+            .insert(orderItems);
+
+          if (itemsError) throw itemsError;
+
+          // Create tickets
+          const tickets = [];
+          for (const item of cart) {
+            for (let i = 0; i < item.quantity; i++) {
+              tickets.push({
+                user_id: user.id,
+                order_id: orderData.id,
+                ticket_type_id: item.ticketTypeId,
+                ticket_number: `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                status: 'valid'
+              });
+            }
+          }
+
+          const { error: ticketsError } = await supabase
+            .from('tickets')
+            .insert(tickets);
+
+          if (ticketsError) throw ticketsError;
+
+          const order: Order = {
+            id: orderData.id,
+            userId: user.id,
+            eventId: cart[0]?.eventId || '',
+            tickets: cart,
+            total: totalCents / 100,
+            status: 'confirmed',
+            paymentMethod: paymentData.method || 'card',
+            createdAt: new Date(orderData.created_at),
+            qrCode: `QR-${orderData.id}`
+          };
+
+          set({ cart: [] });
+          return order;
+        } catch (error) {
+          console.error('Payment processing error:', error);
+          throw new Error('Pembayaran gagal diproses');
+        }
       },
     }),
     {

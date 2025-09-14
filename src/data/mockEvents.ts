@@ -91,7 +91,7 @@ export const mockEvents: Event[] = [
     venue: 'JAKARTA INTERNATIONAL EXPO',
     address: 'KEMAYORAN, JAKARTA PUSAT',
     category: 'MUSIC',
-    image: 'https://images.pexels.com/photos/3184465/pexels-photo-3184465.jpeg',
+    image: 'https://images.pexels.com/photos/1105666/pexels-photo-1105666.jpeg',
     organizer: 'BOSS CREATOR',
     isFeatured: true,
     tags: ['MUSIK', 'FESTIVAL', 'CLOSING'],

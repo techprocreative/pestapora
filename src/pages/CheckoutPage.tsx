@@ -4,9 +4,10 @@ import { useStore } from '../store/useStore';
 import { BrutalInput } from '../components/Common/BrutalInput';
 import { BrutalButton } from '../components/Common/BrutalButton';
 import { CreditCard, Mail, User, MapPin, ArrowLeft, Lock } from 'lucide-react';
+import { createOrder, confirmPayment } from '../lib/payment';
 
 export const CheckoutPage: React.FC = () => {
-  const { cart, events, processPayment, user } = useStore();
+  const { cart, events, clearCart, user } = useStore();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -67,17 +68,30 @@ export const CheckoutPage: React.FC = () => {
     setErrors({});
     
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const order = await processPayment({
-        method: 'Credit Card',
-        amount: finalTotal,
-        cardLast4: formData.cardNumber.slice(-4)
+      // Create order with payment intent
+      const orderResponse = await createOrder({
+        cart,
+        customerInfo: {
+          email: formData.email,
+          fullName: formData.fullName,
+          address: formData.address,
+          city: formData.city,
+          zipCode: formData.zipCode
+        }
       });
 
-      navigate(`/order-confirmation/${order.id}`);
-    } catch {
+      // For demo purposes, we'll simulate successful payment
+      // In a real implementation, you would use Stripe Elements to handle payment
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Confirm payment
+      await confirmPayment(orderResponse.orderId, 'mock_payment_intent_id');
+      
+      // Clear cart and navigate to confirmation
+      clearCart();
+      navigate(`/order-confirmation/${orderResponse.orderId}`);
+    } catch (error) {
+      console.error('Payment error:', error);
       setErrors({ submit: 'PAYMENT FAILED - TRY AGAIN' });
     } finally {
       setProcessing(false);

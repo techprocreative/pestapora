@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useStore } from '../store/useStore';
+import { useAuth } from '../contexts/AuthContext';
 import { BrutalInput } from '../components/Common/BrutalInput';
 import { BrutalButton } from '../components/Common/BrutalButton';
 import { Mail, Lock, User, ArrowLeft } from 'lucide-react';
@@ -9,23 +9,28 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const { login } = useStore();
+  const [loading, setLoading] = useState(false);
+  const { signIn } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
     if (!email || !password) {
       setError('ALL FIELDS ARE REQUIRED');
+      setLoading(false);
       return;
     }
 
-    const success = await login(email, password);
-    if (success) {
+    try {
+      await signIn(email, password);
       navigate('/');
-    } else {
-      setError('INVALID CREDENTIALS');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'INVALID CREDENTIALS');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -73,8 +78,14 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            <BrutalButton type="submit" className="w-full" size="lg">
-              LOGIN TO PESTAPORA
+            {success && (
+              <div className="bg-[#00FF00] text-black p-4 border-4 border-black shadow-[4px_4px_0px_#000000]">
+                <p className="font-black text-sm uppercase text-center">CHECK YOUR EMAIL TO CONFIRM!</p>
+              </div>
+            )}
+
+            <BrutalButton type="submit" className="w-full" size="lg" disabled={loading}>
+              {loading ? 'LOGGING IN...' : 'LOGIN TO PESTAPORA'}
             </BrutalButton>
           </form>
 
@@ -90,8 +101,8 @@ export const LoginPage: React.FC = () => {
           </div>
 
           <div className="mt-8 bg-[#00FFFF] text-black p-4 border-4 border-black shadow-[4px_4px_0px_#000000]">
-            <p className="font-bold text-xs uppercase text-center mb-2">DEMO CREDENTIALS:</p>
-            <p className="font-black text-xs uppercase text-center">admin@pestapora.com / pestapora123</p>
+            <p className="font-bold text-xs uppercase text-center mb-2">CREATE ACCOUNT TO GET STARTED</p>
+            <p className="font-black text-xs uppercase text-center">Real authentication with Supabase</p>
           </div>
         </div>
       </div>
@@ -105,33 +116,44 @@ export const RegisterPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
-  const { register } = useStore();
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const { signUp } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
     if (!email || !password || !confirmPassword || !name) {
       setError('ALL FIELDS ARE BRUTAL REQUIRED');
+      setLoading(false);
       return;
     }
 
     if (password !== confirmPassword) {
       setError('PASSWORDS DO NOT MATCH - BE MORE BRUTAL');
+      setLoading(false);
       return;
     }
 
     if (password.length < 6) {
       setError('PASSWORD TOO WEAK - NEEDS 6+ BRUTAL CHARACTERS');
+      setLoading(false);
       return;
     }
 
-    const success = await register(email, password, name);
-    if (success) {
-      navigate('/');
-    } else {
-      setError('REGISTRATION FAILED - TRY AGAIN');
+    try {
+      await signUp(email, password, name);
+      setSuccess(true);
+      setTimeout(() => {
+        navigate('/login');
+      }, 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'REGISTRATION FAILED - TRY AGAIN');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -195,8 +217,8 @@ export const RegisterPage: React.FC = () => {
               </div>
             )}
 
-            <BrutalButton type="submit" className="w-full" size="lg">
-              JOIN THE BRUTALITY
+            <BrutalButton type="submit" className="w-full" size="lg" disabled={loading || success}>
+              {loading ? 'JOINING...' : success ? 'CHECK YOUR EMAIL!' : 'JOIN THE BRUTALITY'}
             </BrutalButton>
           </form>
 
